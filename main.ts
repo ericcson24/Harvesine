@@ -41,7 +41,114 @@ const handler = async (req: Request): Promise<Response> => {
   const method = req.method;
   const path = url.pathname;
 
-  
+  if (method === "POST" && path === "/ubicacion") {
+    // Crear una nueva ubicación
+    const body = await req.json();
+    const { nombre, coordenadas } = body;
+
+    if (!nombre || !coordenadas || !coordenadas.lat || !coordenadas.lon) {
+      return new Response("Datos incompletos", { status: 400 });
+    }
+
+    const existe = await ubicacionesCollection.findOne({ nombre });
+    if (existe) {
+      return new Response("Ubicación ya existe", { status: 409 });
+    }
+
+    await ubicacionesCollection.insertOne({
+      nombre,
+      coordenadas,
+      ninosBuenos: 0,
+    });
+
+    return new Response("Ubicación creada exitosamente", { status: 201 });
+  }
+
+  if (method === "POST" && path === "/ninos") {
+    // Crear un nuevo niño
+    const body = await req.json();
+    const { nombre, comportamiento, ubicacion } = body;
+
+    if (!nombre || !comportamiento || !ubicacion) {
+      return new Response("Datos incompletos", { status: 400 });
+    }
+
+    if (comportamiento !== "bueno" && comportamiento !== "malo") {
+      return new Response("Comportamiento inválido", { status: 400 });
+    }
+
+    const ubicacionExistente = await ubicacionesCollection.findOne({ _id: new ObjectId(ubicacion) });
+    if (!ubicacionExistente) {
+      return new Response("Ubicación no existe", { status: 404 });
+    }
+
+    const existeNino = await ninosCollection.findOne({ nombre });
+    if (existeNino) {
+      return new Response("El nombre ya está en uso", { status: 409 });
+    }
+
+    await ninosCollection.insertOne({
+      nombre,
+      comportamiento,
+      ubicacion: new ObjectId(ubicacion),
+    });
+
+    if (comportamiento === "bueno") {
+      await ubicacionesCollection.updateOne(
+        { _id: ubicacionExistente._id },
+        { $inc: { ninosBuenos: 1 } },
+      );
+    }
+
+    return new Response("Niño agregado exitosamente", { status: 201 });
+  }
+
+  if (method === "GET" && path === "/ninos/buenos") {
+    // Obtener niños buenos
+    const buenos = await ninosCollection.find({ comportamiento: "bueno" }).toArray();
+    return new Response(JSON.stringify(buenos), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  if (method === "GET" && path === "/ninos/malos") {
+    // Obtener niños malos
+    const malos = await ninosCollection.find({ comportamiento: "malo" }).toArray();
+    return new Response(JSON.stringify(malos), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  if (method === "GET" && path === "/entregas") {
+    // Ordenar ubicaciones por cantidad de niños buenos
+    const ubicaciones = await ubicacionesCollection.find().toArray();
+    ubicaciones.sort((a, b) => b.ninosBuenos - a.ninosBuenos);
+    return new Response(JSON.stringify(ubicaciones), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  if (method === "GET" && path === "/ruta") {
+    // Calcular distancia total a recorrer
+    const ubicaciones = await ubicacionesCollection.find().toArray();
+    ubicaciones.sort((a, b) => b.ninosBuenos - a.ninosBuenos);
+
+    let distanciaTotal = 0;
+
+    for (let i = 0; i < ubicaciones.length - 1; i++) {
+      const { lat: lat1, lon: lon1 } = ubicaciones[i].coordenadas;
+      const { lat: lat2, lon: lon2 } = ubicaciones[i + 1].coordenadas;
+      distanciaTotal += haversine(lat1, lon1, lat2, lon2);
+    }
+
+    return new Response(JSON.stringify({ distanciaTotal }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
   return new Response("Endpoint no encontrado", { status: 404 });
 };
@@ -49,3 +156,4 @@ const handler = async (req: Request): Promise<Response> => {
 //-------------------------------------------------------------------------------------------------------------------------------
 // Iniciar el servidor
 Deno.serve({ port: 6768 }, handler);
+
