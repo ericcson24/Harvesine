@@ -61,7 +61,7 @@ const handler = async (req: Request): Promise<Response> => {
       ninosBuenos: 0,
     });
 
-    return new Response("Ubicación creada exitosamente", { status: 201 });
+    return new Response("Ubicación creada exitosamente", { status: 404 });
   }
 
   if (method === "POST" && path === "/ninos") {
